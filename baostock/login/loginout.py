@@ -139,7 +139,7 @@ def logout(user_id='anonymous'):
     else:
         print("logout failed!")
 
-    if hasattr(conx, "defallt_socket"):
+    if hasattr(conx, "default_socket"):
         if getattr(conx, "default_socket") is not None:
             getattr(conx, "default_socket").close()
 
