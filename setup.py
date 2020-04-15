@@ -97,7 +97,8 @@ setup(
     platforms=["all"],
     url='http://www.baostock.com',
     install_requires=[
-        'pandas>=0.18.0'
+        'pandas>=0.18.0',
+        'socketpool>=0.5.3'
     ],
     classifiers=[
         'Development Status :: 3 - Alpha',   # 开发状态

@@ -5,10 +5,11 @@
 @group : baostock.com
 @contact: baostock@163.com
 """
-import time
 import socket
 import threading
 import zlib
+from socketpool import ConnectionPool, TcpConnector
+
 import baostock.common.contants as cons
 import baostock.common.context as context
 
@@ -34,31 +35,19 @@ class SocketUtil(object):
     def connect(self):
         """创建连接"""
         try:
-            mySockect = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            mySockect.connect((cons.BAOSTOCK_SERVER_IP, cons.BAOSTOCK_SERVER_PORT))
+            socket_pool = ConnectionPool(factory=TcpConnector, max_size=1024,
+                                         options={'host': cons.BAOSTOCK_SERVER_IP, 'port': cons.BAOSTOCK_SERVER_PORT})
+            setattr(context, "default_socket_pool", socket_pool)
         except Exception:
             print("服务器连接失败，请稍后再试。")
-        setattr(context, "default_socket", mySockect)
-
-
-def get_default_socket():
-    """获取默认连接"""
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((cons.BAOSTOCK_SERVER_IP, cons.BAOSTOCK_SERVER_PORT))
-    except Exception:
-        print("服务器连接失败，请稍后再试。")
-        return None
-    return sock
 
 
 def send_msg(msg):
     """发送消息，并接受消息 """
     try:
-        # default_socket = get_default_socket()
-        if hasattr(context, "default_socket"):
-            default_socket = getattr(context, "default_socket")
-            if default_socket is not None:
+        if hasattr(context, "default_socket_pool"):
+            default_socket_pool = getattr(context, "default_socket_pool")
+            with default_socket_pool.connection() as default_socket:
                 # str 类型 -> bytes 类型
                 # msg = msg + "<![CDATA[]]>"  # 在消息结尾追加“消息之间的分隔符”，压缩时的分隔符
                 msg = msg + "\n"  # 在消息结尾追加“消息之间的分隔符”，不压缩时的分隔符
@@ -82,8 +71,6 @@ def send_msg(msg):
                     return head_str + body_str
                 else:
                     return bytes.decode(receive)  # 不进行解压
-            else:
-                return None
         else:
             print("you don't login.")
     except Exception as ex:
@@ -114,9 +101,9 @@ class SocketRealTimeUtil(object):
         try:
             mySockect = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             mySockect.connect((cons.BAOSTOCK_SERVER_REAL_TIME_IP, cons.BAOSTOCK_SERVER_REAL_TIME_PORT))
+            setattr(context, "socket_real_time", mySockect)
         except Exception:
             print("服务器连接失败，请稍后再试。")
-        setattr(context, "socket_real_time", mySockect)
 
 
 def get_real_time_socket():
@@ -133,7 +120,6 @@ def get_real_time_socket():
 def send_real_time_msg(msg):
     """发送实时行情消息，并接受消息 """
     try:
-        # default_socket = get_default_socket()
         if hasattr(context, "socket_real_time"):
             default_socket = getattr(context, "socket_real_time")
             if default_socket is not None:
@@ -142,7 +128,7 @@ def send_real_time_msg(msg):
                 default_socket.send(bytes(msg, encoding='utf-8'))
                 if msg.split(cons.MESSAGE_SPLIT)[1] == cons.MESSAGE_TYPE_LOGOUT_REAL_TIME_REQUEST:
                     default_socket.close()
-                    setattr(context, "default_socket", None)
+                    setattr(context, "socket_real_time", None)
                 else:
                     # default_socket.close()
                     receive = b""
@@ -166,7 +152,6 @@ def send_real_time_msg(msg):
 def send_cancel_real_time_msg(msg):
     """发送取消订阅实时行情消息 """
     try:
-        # default_socket = get_default_socket()
         if hasattr(context, "socket_real_time"):
             default_socket = getattr(context, "socket_real_time")
 
@@ -184,7 +169,6 @@ def send_cancel_real_time_msg(msg):
 
 
 def real_time_subscibe_thread(receive, socket_real_time, data):
-    # time.sleep(2)
     # receive = b""
     # data.fncallback(data)
     data.data = {}
@@ -211,6 +195,7 @@ def real_time_subscibe_thread(receive, socket_real_time, data):
             for real_time_byte in recv_arr:
                 # 由于real_time_byte可能为b''，即为空，需要判断
                 if len(real_time_byte) > 0:
+                    real_time = None
                     try:
                         real_time = bytes.decode(zlib.decompress(real_time_byte))
                     except Exception as ex:
@@ -285,7 +270,6 @@ def real_time_subscibe_thread(receive, socket_real_time, data):
 def send_real_time_subscibe(msg, data):
     """发送实时行情消息，并接受消息 """
     try:
-        # default_socket = get_default_socket()
         if hasattr(context, "socket_real_time"):
             socket_real_time = getattr(context, "socket_real_time")
             if socket_real_time is not None:
